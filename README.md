@@ -14,7 +14,7 @@ Connect Claude to PLAXIS geotechnical FEM software via the Model Context Protoco
 
 ```bash
 cd /Users/sompoteyouwai/env/plaxis_MCP
-pip install mcp pycryptodome requests psutil
+pip install -r requirements.txt
 ```
 
 ### 2. Install plxscripting
