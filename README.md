@@ -1,309 +1,304 @@
 # PLAXIS MCP Server
 
-Connect Claude to PLAXIS geotechnical FEM software via the Model Context Protocol (MCP). This allows Claude to directly create geometry, assign materials, generate meshes, run calculations, and extract results from PLAXIS 2D/3D.
+> Let **Claude AI** talk directly to **PLAXIS 2D** — create geometry, assign materials, run calculations, and read results using plain English.
+
+This project wraps the official PLAXIS Python scripting library as a [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server, so Claude Code can control PLAXIS like a geotechnical engineer.
+
+---
+
+## What it does
+
+Instead of clicking through PLAXIS menus, you describe what you want in natural language and Claude does the work:
+
+```
+"Create an embankment on soft clay, 3m high with 1:2 slopes, run a stability analysis"
+```
+
+Claude will create the geometry, assign Mohr-Coulomb materials, generate the mesh, set up K0 + construction + safety phases, and run the calculation — all inside your running PLAXIS 2D instance.
+
+---
 
 ## Prerequisites
 
-- **PLAXIS 2D or 3D** installed and running with the scripting server enabled
-- **Python 3.9+**
-- **Claude Code** CLI
+- **PLAXIS 2D Connect Edition V20** installed on Windows
+- **Python 3.9 or later** ([python.org](https://www.python.org/downloads/))
+- **Claude Code** ([install guide](https://docs.anthropic.com/claude-code))
+
+---
 
 ## Installation
 
-### 1. Install Python dependencies
+### Step 1 — Clone this repository
 
-```bash
-cd /Users/sompoteyouwai/env/plaxis_MCP
+```bat
+git clone https://github.com/yourname/plaxisMCP.git
+cd plaxisMCP
+```
+
+### Step 2 — Install Python dependencies
+
+```bat
 pip install -r requirements.txt
 ```
 
-### 2. Install plxscripting
+This installs:
+- `mcp[cli]` — the MCP server framework
+- `pycryptodome` — required for PLAXIS encrypted communication
 
-```bash
-pip install -e plxscripting/
+### Step 3 — Find the `plxscripting` library
+
+The PLAXIS Python scripting library (`plxscripting`) ships **inside your PLAXIS installation** — you do not need to install it separately.
+
+#### Where to find it
+
+Every PLAXIS version installs its own Python environment. The library is always at:
+
+```
+<PLAXIS install folder>\python\Lib\site-packages\plxscripting\
 ```
 
-### 3. Enable the MCP server in Claude Code
+Common locations by version:
 
-There are three ways to configure the MCP server depending on your needs:
+| PLAXIS version | Default path |
+|----------------|-------------|
+| **2D V20** (Connect Edition) | `C:\Program Files\Bentley\Geotechnical\PLAXIS 2D CONNECT Edition V20\python\Lib\site-packages` |
+| **2D V21** | `C:\Program Files\Bentley\Geotechnical\PLAXIS 2D CONNECT Edition V21\python\Lib\site-packages` |
+| **2D V22 / V23** | `C:\Program Files\Bentley\Geotechnical\PLAXIS 2D CONNECT Edition V22\python\Lib\site-packages` |
+| **2D 2024 / 2025** (Seequent) | `C:\Program Files\Seequent\PLAXIS 2D 2024\python\Lib\site-packages` |
+| **3D V20** | `C:\Program Files\Bentley\Geotechnical\PLAXIS 3D CONNECT Edition V20\python\Lib\site-packages` |
+| **3D V21 / V22** | `C:\Program Files\Bentley\Geotechnical\PLAXIS 3D CONNECT Edition V21\python\Lib\site-packages` |
 
-#### Option A: Project-level (recommended)
-
-The `.mcp.json` file in this directory is already configured. When you start Claude Code from this directory, it will automatically detect the PLAXIS MCP server. No extra setup needed.
-
-To use it from another project, copy `.mcp.json` to that project's root directory.
-
-#### Option B: Global via `claude mcp add` command
-
-This registers the server globally so it is available in all projects:
-
-```bash
-claude mcp add plaxis \
-  -e PYTHONPATH=/Users/sompoteyouwai/env/plaxis_MCP/plxscripting/src \
-  -- /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 \
-  /Users/sompoteyouwai/env/plaxis_MCP/plaxis_mcp_server.py
-```
-
-You can verify it was added:
-
-```bash
-claude mcp list
-```
-
-To remove it later:
-
-```bash
-claude mcp remove plaxis
-```
-
-#### Option C: Manual `claude_desktop_config.json` (for Claude Desktop app)
-
-If you are using the **Claude Desktop** app instead of Claude Code CLI, edit the config file:
-
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-
-Add the following:
-
-```json
-{
-  "mcpServers": {
-    "plaxis": {
-      "command": "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3",
-      "args": ["/Users/sompoteyouwai/env/plaxis_MCP/plaxis_mcp_server.py"],
-      "env": {
-        "PYTHONPATH": "/Users/sompoteyouwai/env/plaxis_MCP/plxscripting/src"
-      }
-    }
-  }
-}
-```
-
-> **Windows example** (adjust Python and project paths):
-> ```json
-> {
->   "mcpServers": {
->     "plaxis": {
->       "command": "python",
->       "args": ["C:\\Users\\YourName\\plaxis_MCP\\plaxis_mcp_server.py"],
->       "env": {
->         "PYTHONPATH": "C:\\Users\\YourName\\plaxis_MCP\\plxscripting\\src"
->       }
->     }
->   }
-> }
+> Not sure where your version installed? Open Windows Explorer and search for `plxscripting` under `C:\Program Files\`.  
+> Or run in a terminal:
+> ```bat
+> dir /s /b "C:\Program Files\plxscripting" 2>nul
+> dir /s /b "C:\Program Files (x86)\plxscripting" 2>nul
 > ```
 
-After editing, **restart Claude Desktop** for changes to take effect.
+#### Tell the MCP server which path to use
 
-#### Option D: Project-level `.mcp.json` (manual)
+Open `plaxis_mcp_server.py` and update the `_OFFICIAL` variable near the top of the file:
 
-Create a `.mcp.json` file in any project root:
+```python
+# ── Library paths ─────────────────────────────────────────────────────────────
+# Set _OFFICIAL to the site-packages folder of YOUR PLAXIS version.
 
-```json
-{
-  "mcpServers": {
-    "plaxis": {
-      "command": "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3",
-      "args": ["/Users/sompoteyouwai/env/plaxis_MCP/plaxis_mcp_server.py"],
-      "env": {
-        "PYTHONPATH": "/Users/sompoteyouwai/env/plaxis_MCP/plxscripting/src"
-      }
-    }
-  }
-}
+_OFFICIAL = (
+    r"C:\Program Files\Bentley\Geotechnical"
+    r"\PLAXIS 2D CONNECT Edition V20\python\Lib\site-packages"
+)
 ```
 
-Claude Code will prompt you to approve the server the first time it detects it.
+Replace the path with the one that matches your installation from the table above.
 
-## Enable PLAXIS Scripting Server
+> **The bundled fallback** — a copy of `plxscripting` is included in the `plxscripting\` folder.  
+> If `_OFFICIAL` is not found at startup the server automatically uses this bundled copy.  
+> The bundled version may be older than what ships with newer PLAXIS releases.
 
-Before Claude can connect, you must start the scripting server inside PLAXIS:
+---
 
-1. Open PLAXIS 2D or 3D
-2. Go to **Expert > Configure remote scripting server**
-3. Set a **port** (default: `10000` for Input, `10001` for Output)
-4. Set a **password**
-5. Click **Start**
+## Configure Claude Code
 
-Note the port and password -- you will need them when connecting.
+The `.mcp.json` file in this folder registers the server with Claude Code automatically.
 
-## Usage
+Open Claude Code **from inside the `plaxisMCP` folder**:
 
-### Start Claude Code
-
-```bash
-cd /Users/sompoteyouwai/env/plaxis_MCP
+```bat
+cd plaxisMCP
 claude
 ```
 
-Claude will show `plaxis` as an available MCP server. You can then ask Claude to interact with PLAXIS using natural language.
+Claude will detect the MCP server and show `plaxis` as an available tool.
 
-### Example Prompts
+### Global install (use from any project)
 
-**Connect to PLAXIS:**
-```
-Connect to PLAXIS on port 10000 with password "abc123"
-```
+To make PLAXIS available in every Claude Code session regardless of directory:
 
-**Create a simple model:**
-```
-Create a new PLAXIS 2D project with a 10m x 5m soil block.
-Use Mohr-Coulomb material with c=10 kPa, phi=30, E=20000 kPa.
-Generate a medium mesh and calculate.
+```bat
+claude mcp add plaxis -- python C:\full\path\to\plaxisMCP\plaxis_mcp_server.py
 ```
 
-**Work with an existing project:**
-```
-Open the project at C:\Projects\excavation.p2dx and show me all the phases
-```
+Verify:
 
-**Get results:**
-```
-Show me the maximum displacement after Phase_2
+```bat
+claude mcp list
 ```
 
-## Available Tools
+---
 
-### Connection
+## Enable the PLAXIS Scripting Server
 
-| Tool | Description |
-|------|-------------|
-| `plaxis_connect` | Connect to a running PLAXIS instance |
-| `plaxis_disconnect` | Disconnect from PLAXIS |
-| `plaxis_server_status` | Check connection status |
+Claude communicates with PLAXIS over a local HTTP server that you must start inside PLAXIS:
 
-### Project Management
+1. Open **PLAXIS 2D Connect Edition V20**
+2. Go to **Expert → Configure remote scripting server**
+3. Set **Port** = `10000` *(default — no need to change)*
+4. Set a **Password** of your choice
+5. Click **Start server**
 
-| Tool | Description |
-|------|-------------|
-| `plaxis_new_project` | Create a new empty project |
-| `plaxis_open_project` | Open a `.p2dx` or `.p3d` project file |
-| `plaxis_close_project` | Close the current project |
-
-### Commands
-
-| Tool | Description |
-|------|-------------|
-| `plaxis_command` | Execute any single PLAXIS command |
-| `plaxis_commands` | Execute multiple commands in sequence |
-
-### Object Inspection
-
-| Tool | Description |
-|------|-------------|
-| `plaxis_get_object` | Get an object and its properties |
-| `plaxis_get_property` | Get a specific property value |
-| `plaxis_set_property` | Set a property value |
-| `plaxis_list_objects` | List all objects of a type |
-
-### Shortcuts
-
-| Tool | Description |
-|------|-------------|
-| `plaxis_create_soil` | Create a soil material with common parameters |
-| `plaxis_create_borehole` | Create a borehole with soil layers |
-| `plaxis_get_results` | Get calculation results for a phase |
-
-## PLAXIS Command Reference
-
-The `plaxis_command` tool accepts any valid PLAXIS command line string. Common commands:
-
-### Geometry
+The PLAXIS title bar will show:
 ```
-point <x> <y>                    # Create a point
-line <x1> <y1> <x2> <y2>        # Create a line
-polygon <x1> <y1> ... <xn> <yn> # Create a polygon
+PLAXIS 2D (Untitled) *** SERVER ACTIVE on port 10000 (SECURED) ***
 ```
 
-### Materials
-```
-soilmat <name>                   # Create a soil material
-set <Mat>.gammaUnsat <value>     # Set unsaturated unit weight
-set <Mat>.gammaSat <value>       # Set saturated unit weight
-set <Mat>.Eref <value>           # Set Young's modulus
-set <Mat>.cref <value>           # Set cohesion
-set <Mat>.phi <value>            # Set friction angle
-```
+---
 
-### Mesh
-```
-gotomesh                         # Switch to mesh mode
-mesh <coarseness>                # Generate mesh (0.01=very fine, 0.1=coarse)
-```
+## Usage
 
-### Staged Construction
-```
-gotostages                       # Switch to staged construction
-phase <name>                     # Add a new phase
-activate <object> <phase>        # Activate object in phase
-deactivate <object> <phase>      # Deactivate object in phase
-```
-
-### Calculation
-```
-calculate                        # Run all calculations
-selectmeshpoints                 # Select output points
-```
-
-### Mode Switching
-```
-gotosoil                         # Soil mode
-gotostructures                   # Structures mode
-gotomesh                         # Mesh mode
-gotostages                       # Staged construction mode
-gotoflow                         # Flow conditions mode
-```
-
-## Example Workflow
-
-Here is a complete example of building a simple excavation model through Claude:
+Start a Claude Code session and tell it to connect:
 
 ```
-1. "Connect to PLAXIS on port 10000 with password mypass"
-2. "Create a new project"
-3. "Create a 40m wide, 20m deep soil body"
-4. "Create two soil materials:
-    - Clay: gamma=18, E=15000, c=5, phi=25
-    - Sand: gamma=20, E=30000, c=0, phi=33"
-5. "Create a borehole at x=0 with Clay from 0 to -8m and Sand from -8 to -20m"
-6. "Add a 5m deep excavation in the center"
-7. "Create phases: Initial, Excavation to -2.5m, Excavation to -5m"
-8. "Generate a fine mesh and calculate all phases"
-9. "Show me the total displacements for the final phase"
+Connect to PLAXIS on port 10000 with password "yourpassword"
 ```
+
+Then describe your model:
+
+```
+Create a new embankment on soft clay problem:
+- Soft clay foundation: 40m wide, 8m deep, Su = 20 kPa
+- Embankment: 3m high, 6m crest, 1V:2H slopes
+- Run initial K0, construction, and safety analysis phases
+```
+
+---
+
+## Example prompts
+
+| Goal | Prompt |
+|------|--------|
+| New project | `Create a new PLAXIS project with 20m×10m soft clay` |
+| Embankment stability | `Build an embankment on soft clay and find the factor of safety` |
+| Open existing project | `Open the project at C:\Projects\retaining_wall.p2dx` |
+| Get results | `What is the maximum settlement after Phase_2?` |
+| Inspect model | `List all soil materials and their parameters` |
+
+---
+
+## Project structure
+
+```
+plaxisMCP/
+├── plaxis_mcp_server.py   ← Main MCP server (edit this to customise)
+├── .mcp.json              ← Claude Code auto-configuration
+├── requirements.txt       ← Python dependencies
+├── plxscripting/          ← Bundled fallback library (from PLAXIS PPL)
+│   └── src/
+│       └── plxscripting/
+└── README.md
+```
+
+---
+
+## Known limitations & workarounds
+
+### `Eref` is read-only via command line
+
+PLAXIS 2D V20 does not allow setting Young's modulus (`Eref`) through the command-line scripting interface. Use **`Gref`** instead — PLAXIS computes `Eref` automatically:
+
+```
+Gref = E / (2 × (1 + ν))
+```
+
+Example — E = 10 000 kN/m², ν = 0.495:
+
+```
+set Clay.Gref 3344
+```
+
+### Set unit weights before drainage type
+
+`gammaSat` becomes read-only after `DrainageType 3` (Undrained C) is set. Always set `gammaUnsat` and `gammaSat` first:
+
+```
+set Clay.gammaUnsat 15     ← first
+set Clay.gammaSat   16     ← second
+set Clay.DrainageType 3    ← last
+```
+
+### `soillayer` takes thickness, not elevation
+
+```
+soillayer 8     ← creates an 8 m thick layer  ✓
+soillayer -8    ← error (must be positive)    ✗
+```
+
+Only call `soillayer` for the **first** borehole. Additional boreholes inherit the same layers automatically.
+
+### Undrained C + K0 procedure = error
+
+The K0 procedure (InitialPhase default) is incompatible with Undrained C materials.  
+Switch to gravity loading:
+
+```
+set InitialPhase.DeformCalcType "gravityloading"
+```
+
+### Boundary condition command
+
+The correct command is `linedispl`, not `linedisplacement`:
+
+```
+linedispl (0 -8) (40 -8)
+set LineDisplacement_1.Displacement_x 1    ← 1 = Fixed
+set LineDisplacement_1.Displacement_y 1    ← 0 = Free
+```
+
+---
 
 ## Troubleshooting
 
-### Cannot connect to PLAXIS
-- Verify PLAXIS is running and the scripting server is started
-- Check the port number matches what PLAXIS shows
-- Ensure the password is correct
-- Check that no firewall is blocking the connection
+**Cannot connect to PLAXIS**
+- Make sure the scripting server is started inside PLAXIS (see above)
+- Check the port (`10000`) and password match exactly
+- Allow Python through Windows Firewall on port 10000
 
-### Import errors
-- Make sure `pycryptodome` is installed (`pip install pycryptodome`)
-- Verify the `PYTHONPATH` in `.mcp.json` points to `plxscripting/src`
-
-### MCP server not showing in Claude
-- Restart Claude Code from within this directory
-- Check `.mcp.json` exists and has valid JSON
-- Run the server manually to check for errors:
-  ```bash
-  PYTHONPATH=plxscripting/src python3 plaxis_mcp_server.py
-  ```
-
-## Architecture
-
-```
-Claude Code  <-->  MCP Protocol  <-->  plaxis_mcp_server.py  <-->  PLAXIS HTTP API
-                                            |
-                                       plxscripting/
-                                       (PLAXIS Python SDK)
+**`No module named 'distutils'` on Python 3.12+**
+```bat
+pip install setuptools
 ```
 
-The MCP server wraps the `plxscripting` library (official PLAXIS Python API by Seequent/Bentley) and exposes its functionality as MCP tools. Communication with PLAXIS happens over HTTP to the local scripting server.
+**MCP server not showing in Claude Code**
+```bat
+python plaxis_mcp_server.py    ← run manually to see errors
+```
+Then check `.mcp.json` exists in the current directory.
+
+**`plxscripting` not found**
+- Confirm PLAXIS 2D V20 is installed
+- Update the path in `plaxis_mcp_server.py` (see Step 3 above)
+- Or use the bundled fallback in `plxscripting\src\`
+
+---
+
+## How it works
+
+```
+You (natural language)
+        ↓
+   Claude Code
+        ↓  MCP Protocol (stdio)
+plaxis_mcp_server.py
+        ↓  plxscripting (official PLAXIS Python library)
+PLAXIS 2D Scripting Server  (localhost:10000, encrypted HTTP)
+        ↓
+   PLAXIS 2D
+```
+
+---
+
+## Contributing
+
+Pull requests welcome. When adding new tools, follow the pattern in `plaxis_mcp_server.py`:
+
+1. Decorate with `@mcp.tool()`
+2. Use `_best_set(s, g, name, prop, value)` to set properties (handles read-only cmd-line properties automatically)
+3. Always return `json.dumps({"status": "success"|"error", ...})`
+
+---
 
 ## License
 
-The `plxscripting` library is subject to the Plaxis Public License (PPL). See `plxscripting/LICENSE` for details.
+The **`plxscripting`** library bundled in this repo is subject to the  
+**Plaxis Public License (PPL) Version 1.0** — see `plxscripting\LICENSE`.
+
+The MCP server code (`plaxis_mcp_server.py`) is released under the **MIT License**.
