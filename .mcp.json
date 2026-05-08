@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "plaxis": {
+      "command": "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3",
+      "args": ["/Users/sompoteyouwai/env/plaxis_MCP/plaxis_mcp_server.py"],
+      "env": {
+        "PYTHONPATH": "/Users/sompoteyouwai/env/plaxis_MCP/plxscripting/src"
+      }
+    }
+  }
+}
