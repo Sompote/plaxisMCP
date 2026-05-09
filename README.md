@@ -1,5 +1,7 @@
 # PLAXIS MCP Server
 
+**Version:** v0.1.0
+
 > Let **Claude AI** talk directly to **PLAXIS 2D** — create geometry, assign materials, run calculations, and read results using plain English.
 
 This project wraps the official PLAXIS Python scripting library as a [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server, so Claude Code can control PLAXIS like a geotechnical engineer.
@@ -126,6 +128,21 @@ claude mcp list
 
 ---
 
+## Bundled Claude skill (`SKILL.md`)
+
+This repo ships with a Claude Code **skill** that teaches the agent how to drive PLAXIS correctly — connection workflow, the standard build order (materials → boreholes → structures → BCs → mesh → phases → calculate → results), and a long list of empirically-confirmed V20 quirks (Eref read-only, Undrained_C + K0 conflict, soillayer behavior, `linedispl` BC handling, Safety phase setup, polygon extension across boreholes, mesh sizing, the `plaxis_set_fixities` over-constraint bug, and more).
+
+Two copies are provided:
+
+- `.claude/skills/plaxis/SKILL.md` — auto-loaded by Claude Code when this repo is the working directory; the agent invokes it whenever the user mentions PLAXIS, embankments, soft clay, factor of safety, settlement, or any `mcp__plaxis__*` tool.
+- `SKILL.md` (project root) — a convenience copy for browsing on GitHub.
+
+You don't need to do anything to "enable" the skill — it activates automatically once Claude Code is launched from the `plaxisMCP` folder. To use it from any directory, see the *Global install* section above and the skill content will travel with the MCP tools.
+
+If you hit a new V20 quirk, edit `.claude/skills/plaxis/SKILL.md` and add it under §4 — the next session will benefit.
+
+---
+
 ## Enable the PLAXIS Scripting Server
 
 Claude communicates with PLAXIS over a local HTTP server that you must start inside PLAXIS:
@@ -178,12 +195,17 @@ Create a new embankment on soft clay problem:
 
 ```
 plaxisMCP/
-├── plaxis_mcp_server.py   ← Main MCP server (edit this to customise)
-├── .mcp.json              ← Claude Code auto-configuration
-├── requirements.txt       ← Python dependencies
-├── plxscripting/          ← Bundled fallback library (from PLAXIS PPL)
+├── plaxis_mcp_server.py            ← Main MCP server (edit this to customise)
+├── .mcp.json                       ← Claude Code auto-configuration
+├── requirements.txt                ← Python dependencies
+├── plxscripting/                   ← Bundled fallback library (from PLAXIS PPL)
 │   └── src/
 │       └── plxscripting/
+├── .claude/
+│   └── skills/
+│       └── plaxis/
+│           └── SKILL.md            ← PLAXIS skill auto-loaded by Claude Code
+├── SKILL.md                        ← Mirror of the skill for GitHub browsing
 └── README.md
 ```
 

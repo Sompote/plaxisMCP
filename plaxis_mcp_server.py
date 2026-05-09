@@ -11,20 +11,47 @@ import sys
 import os
 import json
 import logging
+import types
 from typing import Optional
 
+# ── Python 3.12+ distutils compatibility patch ───────────────────────────────
+# distutils was removed in Python 3.12; plxscripting.console imports
+# distutils.version.StrictVersion, so we inject a minimal stub before any
+# plxscripting import can trigger the missing-module error.
+if "distutils" not in sys.modules:
+    class _StrictVersion:
+        def __init__(self, v="0"): self.version = tuple(int(x) for x in str(v).split(".")[:3])
+        def __le__(self, o): return self.version <= o.version
+        def __lt__(self, o): return self.version < o.version
+        def __ge__(self, o): return self.version >= o.version
+        def __gt__(self, o): return self.version > o.version
+        def __eq__(self, o): return self.version == o.version
+    _dm = types.ModuleType("distutils")
+    _dvm = types.ModuleType("distutils.version")
+    _dvm.StrictVersion = _StrictVersion
+    _dm.version = _dvm
+    sys.modules["distutils"] = _dm
+    sys.modules["distutils.version"] = _dvm
+
 # ── Library paths ────────────────────────────────────────────────────────────
-# Prefer the official library that ships with PLAXIS; fall back to the
-# bundled copy in the project if the official one is not present.
+# The official PLAXIS library ships with a bundled requests/urllib3 that uses
+# the `cgi` module (removed in Python 3.13) and an old ssl_match_hostname API.
+# On Python 3.13+ we skip the official path and always use the bundled copy.
+# On older Python the official path is added but the bundled copy is pinned
+# at sys.path[0] so it always wins.
 _OFFICIAL = (
     r"C:\Program Files\Bentley\Geotechnical"
     r"\PLAXIS 2D CONNECT Edition V20\python\Lib\site-packages"
 )
 _BUNDLED = os.path.join(os.path.dirname(__file__), "plxscripting", "src")
 
-for _p in [_OFFICIAL, _BUNDLED]:
-    if os.path.isdir(_p) and _p not in sys.path:
-        sys.path.insert(0, _p)
+if sys.version_info < (3, 13) and os.path.isdir(_OFFICIAL) and _OFFICIAL not in sys.path:
+    sys.path.append(_OFFICIAL)          # low priority — bundled wins
+
+if os.path.isdir(_BUNDLED):            # always pin bundled at the front
+    if _BUNDLED in sys.path:
+        sys.path.remove(_BUNDLED)
+    sys.path.insert(0, _BUNDLED)
 
 from mcp.server.fastmcp import FastMCP
 
@@ -202,7 +229,7 @@ def plaxis_new_project() -> str:
     """Create a new PLAXIS project."""
     s, g = _require_connection()
     try:
-        s.call_and_handle_command("new")
+        s.new()
         return json.dumps({"status": "success", "result": "OK"})
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)})
@@ -557,11 +584,15 @@ def plaxis_set_fixities(
             ux = "Fixed" if ux_fixed else "Free"
             uy = "Fixed" if uy_fixed else "Free"
             try:
-                cmd = f"linedisplacement ({x1} {y1}) ({x2} {y2})"
+                cmd = f"linedispl ({x1} {y1}) ({x2} {y2})"
                 res = s.call_and_handle_command(cmd)
-                ld_name = _describe_proxy(res).get("name", "LineDisplacement")
-                s.call_and_handle_command(f"set {ld_name}.Displacement_x {ux}")
-                s.call_and_handle_command(f"set {ld_name}.Displacement_y {uy}")
+                # result is a list [Point, Point, Line, LineDisplacement]
+                ld = res[-1] if isinstance(res, list) else res
+                ld_name = _describe_proxy(ld).get("name", "LineDisplacement_1")
+                obj = g.__getattr__(ld_name)
+                _py_set(obj, "Displacement_x", ux)
+                if uy_fixed:
+                    _py_set(obj, "Displacement_y", uy)
                 log.append(f"{label}: Ux={ux}, Uy={uy}")
             except Exception as e:
                 log.append(f"{label} error: {e}")
